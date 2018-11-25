@@ -1,4 +1,5 @@
-﻿using System;
+﻿using JavaClassDiagramHelper.UMLet;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -8,35 +9,36 @@ namespace JavaClassDiagramHelper
 {
     class Program
     {
-        static readonly List<Package> packages = new List<Package>();
+        static readonly List<Classifier> classifiers = new List<Classifier>();
         static string sourceDirectory = "C:\\Users\\DanielSharp\\source\\repos\\Pockets\\src\\";
-
-        static Package currentPackage;
 
         static void Main(string[] args)
         {
             ProcessDirectory(sourceDirectory);
-            currentPackage = packages.First();
+            ClassifierGraph graph = new ClassifierGraph(classifiers);
 
             string cmd;
             while ((cmd = Console.ReadLine()) != "quit")
             {
-                if (cmd.Length > 7 && cmd.Substring(0, 7).ToLower() == "package")
+                Console.Clear();
+                ClassifierNode classifierNode = graph.Nodes.Where(n => n.Classifier.Name.Name == cmd).FirstOrDefault();
+                if (classifierNode != null)
                 {
-                    Package(cmd.Substring(8));
-                }
-                else if (cmd.Length > 5 && cmd.Substring(0, 5).ToLower() == "class")
-                {
-                    Class(cmd.Substring(6));
-                }
-                else if (cmd.Length >= 4 && cmd.Substring(0, 4).ToLower() == "list")
-                {
-                    List();
+                    classifierNode.Relations.Clear();
+                    graph.SetRelationsFor(classifierNode);
+                    classifierNode.Text = classifierNode.Classifier.ToUMLString();
+                    Console.WriteLine(classifierNode.Text);
+
+                    foreach (ClassifierRelation relation in classifierNode.Relations)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine(relation);
+                    }
                 }
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("No such command!");
+                    Console.WriteLine("No such classifier!");
                     Console.ResetColor();
                 }
             }
@@ -44,72 +46,9 @@ namespace JavaClassDiagramHelper
             Console.ReadLine();
         }
 
-        static void Package(string package)
-        {
-            currentPackage = packages.Where(p => p.Name == package).FirstOrDefault();
-            if (currentPackage == null)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("No such package!");
-                Console.ResetColor();
-            }
-        }
-
-        static void Class(string className)
-        {
-            if (currentPackage == null)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("No package selected!");
-                Console.ResetColor();
-                return;
-            }
-
-            Class classObj = currentPackage.Classes.Where(c => c.Name.Name == className).FirstOrDefault();
-
-            if (classObj == null)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("No such class!");
-                Console.ResetColor();
-                return;
-            }
-
-            Console.WriteLine(classObj.ToString());
-            Console.WriteLine("\nFields:");
-            foreach (Field field in classObj.Fields)
-            {
-                Console.WriteLine(field.ToString());
-            }
-            Console.WriteLine("\nMethods:");
-            foreach (Method method in classObj.Methods)
-            {
-                Console.WriteLine(method.ToString());
-            }
-        }
-
-        static void List()
-        {
-            Console.WriteLine("Interfaces:");
-            foreach (Interface interfaceObj in currentPackage.Interfaces)
-            {
-                Console.WriteLine(interfaceObj.ToString());
-            }
-            Console.WriteLine("\nClasses:");
-            foreach (Class classObj in currentPackage.Classes)
-            {
-                Console.WriteLine(classObj.ToString());
-            }
-        }
-
         static void ProcessDirectory(string directory)
         {
             if (directory.Contains("test")) return;
-
-            string packageName = directory.Replace(sourceDirectory, "").Replace("\\", ".").Replace("/", ".");
-            if (packageName == "") packageName = null;
-            Package package = new Package() { Name = packageName ?? "<default>" };
-            packages.Add(package);
 
             foreach (string file in Directory.GetFiles(directory))
             {
@@ -117,19 +56,15 @@ namespace JavaClassDiagramHelper
                 
                 using (StreamReader reader = new StreamReader(file, Encoding.UTF8))
                 {
-                    object parsed = new Parser(new Tokenizer(reader.ReadToEnd()).Tokenize()).Parse();
+                    Classifier parsed = new Parser(new Tokenizer(reader.ReadToEnd()).Tokenize()).Parse();
+                    classifiers.Add(parsed);
                     if (parsed is Class classObj)
                     {
-                        package.Classes.Add(classObj);
-                        foreach (Class internalClass in classObj.InternalClasses)
+                        foreach (Classifier internalClassifier in classObj.InternalClassifiers)
                         {
-                            internalClass.Name.Name = classObj.Name.Name + "." + internalClass.Name.Name;
-                            package.Classes.Add(internalClass);
+                            internalClassifier.Name.Name = classObj.Name.Name + "." + internalClassifier.Name.Name;
+                            classifiers.Add(internalClassifier);
                         }
-                    }
-                    else if (parsed is Interface interfaceObj)
-                    {
-                        package.Interfaces.Add(interfaceObj);
                     }
                 }
             }

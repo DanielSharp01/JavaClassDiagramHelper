@@ -7,7 +7,8 @@ namespace JavaClassDiagramHelper
     public class TypeReference
     {
         public string Name { get; set; }
-        public List<string> GenericTypes { get; } = new List<string>();
+        public string Extends { get; set; }
+        public List<TypeReference> GenericTypes { get; } = new List<TypeReference>();
         public bool IsArray { get; set; } = false;
 
         public override string ToString()
@@ -17,9 +18,9 @@ namespace JavaClassDiagramHelper
             if (GenericTypes.Count > 0)
             {
                 ret += "<";
-                foreach (string type in GenericTypes)
+                foreach (TypeReference type in GenericTypes)
                 {
-                    ret += type;
+                    ret += type.ToString();
                 }
                 ret += ">";
             }
@@ -30,6 +31,38 @@ namespace JavaClassDiagramHelper
             }
 
             return ret;
+        }
+
+        public string ToUMLString()
+        {
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.Append(Name);
+
+            if (GenericTypes.Count > 0)
+            {
+                stringBuilder.Append("<");
+                foreach (TypeReference type in GenericTypes)
+                {
+                    if (type.Name == "?" && type.Extends != null)
+                    {
+                        stringBuilder.Append(type.Extends);
+                    }
+                    else
+                    {
+                        stringBuilder.Append(type.Name);
+                    }
+                    stringBuilder.Append(", ");
+                }
+                stringBuilder.Length -= 2;
+                stringBuilder.Append(">");
+            }
+
+            if (IsArray)
+            {
+                stringBuilder.Append("[0..*]");
+            }
+
+            return stringBuilder.ToString();
         }
     }
 }

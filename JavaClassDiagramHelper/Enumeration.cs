@@ -4,12 +4,11 @@ using System.Text;
 
 namespace JavaClassDiagramHelper
 {
-    public class Interface : Classifier
+    public class Enumeration : Classifier
     {
-        public List<Method> Methods { get; } = new List<Method>();
-        public TypeReference Extends { get; set; }
+        public List<string> Values { get; } = new List<string>();
 
-        public Interface(List<Annotation> annotations, List<Qualifier> qualifiers)
+        public Enumeration(List<Annotation> annotations, List<Qualifier> qualifiers)
             : base(annotations, qualifiers)
         { }
 
@@ -20,12 +19,7 @@ namespace JavaClassDiagramHelper
             {
                 ret += Enum.GetName(typeof(Qualifier), qualifier).ToLower() + " ";
             }
-            ret += "interface " + Name.ToString();
-
-            if (Extends != null)
-            {
-                ret += " extends " + Extends.ToString();
-            }
+            ret += "enum " + Name.ToString();
 
             return ret;
         }
@@ -33,13 +27,12 @@ namespace JavaClassDiagramHelper
         public override string ToUMLString()
         {
             StringBuilder stringBuilder = new StringBuilder();
-            stringBuilder.AppendLine("<<Interface>>");
+            stringBuilder.AppendLine("<<Enumeration>>");
             stringBuilder.AppendLine(Name.ToUMLString());
             stringBuilder.AppendLine("--");
-            foreach (Method method in Methods)
+            foreach (string value in Values)
             {
-                if (!method.Qualifiers.Contains(Qualifier.Public)) method.Qualifiers.Add(Qualifier.Public);
-                stringBuilder.AppendLine(method.ToUMLString());
+                stringBuilder.AppendLine(value);
             }
             stringBuilder.Append("bg=yellow");
             return stringBuilder.ToString();

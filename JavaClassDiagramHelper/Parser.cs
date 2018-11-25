@@ -20,20 +20,24 @@ namespace JavaClassDiagramHelper
             this.tokens = tokens.Where(t => t.Type != TokenType.Comment).ToList();
         }
 
-        public object Parse()
+        public Classifier Parse()
         {
             // Skip until the first class declaration
             while ((!qualifierWords.Contains(tokens[currentIndex].Value) || tokens[currentIndex - 1].Value == "import")
                 && tokens[currentIndex].Value != "class" && tokens[currentIndex].Value != "interface" && tokens[currentIndex].Value != "@") currentIndex++;
-            Annotation annotation = NextAnnotation();
+            List<Annotation> annotations = NextAnnotations();
             List<Qualifier> qualifiers = NextQualifiers();
             if (tokens[currentIndex].Value == "class")
             {
-                return NextClass(qualifiers, annotation);
+                return NextClass(annotations, qualifiers);
             }
             else if (tokens[currentIndex].Value == "interface")
             {
-                return NextInterface(qualifiers, annotation);
+                return NextInterface(annotations, qualifiers);
+            }
+            else if (tokens[currentIndex].Value == "enum")
+            {
+                return NextEnum(annotations, qualifiers);
             }
             else
             {
@@ -52,12 +56,11 @@ namespace JavaClassDiagramHelper
             return qualifiers;
         }
 
-        private Class NextClass(List<Qualifier> qualifiers, Annotation annotation)
+        private Class NextClass(List<Annotation> annotations, List<Qualifier> qualifiers)
         {
             currentIndex++;
             TypeReference className = NextTypeReference();
-            Class classObj = new Class() { Name = className, Annotation = annotation };
-            classObj.Qualifiers.AddRange(qualifiers);
+            Class classObj = new Class(annotations, qualifiers) { Name = className };
 
             // Extends
             if (tokens[currentIndex].Value == "extends")
@@ -67,9 +70,10 @@ namespace JavaClassDiagramHelper
             }
 
             // Implements
-            if (tokens[currentIndex].Value == "extends")
+            if (tokens[currentIndex].Value == "implements")
             {
                 currentIndex++;
+                classObj.Implements.Add(NextTypeReference());
                 while (tokens[currentIndex].Value == ",")
                 {
                     currentIndex++;
@@ -79,7 +83,7 @@ namespace JavaClassDiagramHelper
 
             currentIndex++; // Skipping {
 
-            object member = null;
+            Qualified member = null;
             while ((member = NextMember()) != null)
             {
                 if (member is Method method)
@@ -90,9 +94,9 @@ namespace JavaClassDiagramHelper
                 {
                     classObj.Fields.Add(field);
                 }
-                else if (member is Class internalClass)
+                else if (member is Classifier classifier)
                 {
-                    classObj.InternalClasses.Add(internalClass);
+                    classObj.InternalClassifiers.Add(classifier);
                 }
             }
 
@@ -101,12 +105,11 @@ namespace JavaClassDiagramHelper
             return classObj;
         }
 
-        private Interface NextInterface(List<Qualifier> qualifiers, Annotation annotation)
+        private Interface NextInterface(List<Annotation> annotations, List<Qualifier> qualifiers)
         {
             currentIndex++;
-            TypeReference className = NextTypeReference();
-            Interface interfaceObj = new Interface() { Name = className, Annotation = annotation };
-            interfaceObj.Qualifiers.AddRange(qualifiers);
+            TypeReference name = NextTypeReference();
+            Interface interfaceObj = new Interface(annotations, qualifiers) { Name = name };
 
             // Extends
             if (tokens[currentIndex].Value == "extends")
@@ -117,7 +120,7 @@ namespace JavaClassDiagramHelper
 
             currentIndex++; // Skipping {
 
-            object member = null;
+            Qualified member = null;
             while ((member = NextMember()) != null)
             {
                 if (member is Method method)
@@ -131,9 +134,32 @@ namespace JavaClassDiagramHelper
             return interfaceObj;
         }
 
-        private TypeReference NextTypeReference()
+        private Enumeration NextEnum(List<Annotation> annotations, List<Qualifier> qualifiers)
+        {
+            currentIndex++;
+            TypeReference name = NextTypeReference();
+            Enumeration enumObj = new Enumeration(annotations, qualifiers) { Name = name };
+
+            while (tokens[currentIndex].Value != "}")
+            {
+                currentIndex++;
+                enumObj.Values.Add(tokens[currentIndex].Value);
+                while (tokens[currentIndex].Value != "}" && tokens[currentIndex].Value != ",") currentIndex++;
+            }
+
+            currentIndex++; // Skipping }
+
+            return enumObj;
+        }
+
+        private TypeReference NextTypeReference(bool generic = false)
         {
             TypeReference typeReference = new TypeReference { Name = tokens[currentIndex++].Value };
+            if (tokens[currentIndex].Value == "extends" && generic)
+            {
+                currentIndex++;
+                typeReference.Extends = tokens[currentIndex++].Value;
+            }
 
             while (tokens[currentIndex].Value == "." && tokens[currentIndex + 1].Type == TokenType.Identifier)
             {
@@ -144,11 +170,15 @@ namespace JavaClassDiagramHelper
             if (tokens[currentIndex].Value == "<")
             {
                 currentIndex++;
-                typeReference.GenericTypes.Add(tokens[currentIndex++].Value);
+                if (tokens[currentIndex].Value == "?") currentIndex++;
+                if (tokens[currentIndex].Value == "extends") currentIndex++;
+                typeReference.GenericTypes.Add(NextTypeReference(true));
                 while (tokens[currentIndex].Value == ",")
                 {
                     currentIndex++;
-                    typeReference.GenericTypes.Add(tokens[currentIndex++].Value);
+                    if (tokens[currentIndex].Value == "?") currentIndex++;
+                    if (tokens[currentIndex].Value == "extends") currentIndex++;
+                    typeReference.GenericTypes.Add(NextTypeReference(true));
                 }
                 currentIndex++; // Skipping >
             }
@@ -172,39 +202,49 @@ namespace JavaClassDiagramHelper
             return new Parameter() { Type = typeReference, Name = tokens[currentIndex++].Value };
         }
 
-        private object NextMember()
+        private Qualified NextMember()
         {
             if (tokens[currentIndex].Value == "}") return null;
 
-            Annotation annotation = NextAnnotation();
+            List<Annotation> annotations = NextAnnotations();
             List<Qualifier> qualifiers = NextQualifiers();
+
+            if (tokens[currentIndex].Value == "{")
+            {
+                Method method = new Method(annotations, qualifiers) { Name = null };
+                SkipMethodBody(method);
+                return method;
+            }
 
             if (tokens[currentIndex].Value == "class")
             {
-                return NextClass(qualifiers, annotation);
+                return NextClass(annotations, qualifiers);
             }
             else if (tokens[currentIndex].Value == "interface")
             {
-                return NextInterface(qualifiers, annotation);
+                return NextInterface(annotations, qualifiers);
+            }
+            else if (tokens[currentIndex].Value == "enum")
+            {
+                return NextEnum(annotations, qualifiers);
             }
 
             TypeReference typeRef = NextTypeReference();
-            string name;
+            TypeReference name;
             if (tokens[currentIndex].Value == "(")
             {
-                name = typeRef.Name;
+                name = typeRef;
                 typeRef = null;
             }
             else
             {
-                name = tokens[currentIndex++].Value;
+                name = NextTypeReference();
             }
 
             if (tokens[currentIndex].Value == "(")
             {
                 currentIndex++;
-                Method method = new Method() { ReturnType = typeRef, Name = name, Annotation = annotation };
-                method.Qualifiers.AddRange(qualifiers);
+                Method method = new Method(annotations, qualifiers) { ReturnType = typeRef, Name = name };
                 if (tokens[currentIndex].Value != ")")
                 {
                     method.Parameters.Add(NextParameter());
@@ -217,7 +257,18 @@ namespace JavaClassDiagramHelper
 
                 currentIndex++; // Skipping )
 
-                SkipMethodBody();
+                if (tokens[currentIndex].Value == "throws")
+                {
+                    currentIndex++;
+                    method.Throws.Add(NextTypeReference());
+                    while (tokens[currentIndex].Value == ",")
+                    {
+                        currentIndex++;
+                        method.Throws.Add(NextTypeReference());
+                    }
+                }
+
+                SkipMethodBody(method);
 
                 return method;
             }
@@ -228,14 +279,19 @@ namespace JavaClassDiagramHelper
                 typeRef.IsArray = true;
             }
 
-            Field field = new Field() { Type = typeRef, Name = name, Annotation = annotation };
-            field.Qualifiers.AddRange(qualifiers);
+            if (name.IsArray)
+            {
+                typeRef.IsArray = true;
+                name.IsArray = false;
+            }
+
+            Field field = new Field(annotations, qualifiers) { Type = typeRef, Name = name };
             while (tokens[currentIndex].Value != ";") currentIndex++;
             currentIndex++; // Skipping ;
             return field;
         }
 
-        private void SkipMethodBody()
+        private void SkipMethodBody(Method method)
         {
             while (tokens[currentIndex].Value != "{" && tokens[currentIndex].Value != ";") currentIndex++;
 
@@ -257,23 +313,35 @@ namespace JavaClassDiagramHelper
                 {
                     braceLevel--;
                 }
+                else if (tokens[currentIndex].Type == TokenType.Identifier)
+                {
+                    method.BodyIdentifiers.Add(tokens[currentIndex].Value);
+                }
 
                 currentIndex++;
             }
         }
 
-        private Annotation NextAnnotation()
+        private List<Annotation> NextAnnotations()
         {
+            List<Annotation> ret = new List<Annotation>();
             if (tokens[currentIndex].Value == "@")
             {
                 currentIndex++;
-                return new Annotation { Name = tokens[currentIndex++].Value };
+                ret.Add(new Annotation { Name = tokens[currentIndex++].Value });
+                if (tokens[currentIndex].Value == "(")
+                {
+                    currentIndex++;
+                    while (tokens[currentIndex].Value != ")") currentIndex++;
+                    currentIndex++; //Skipping )
+                }
+                if (tokens[currentIndex].Value == ",") currentIndex++;
             }
 
-            return null;
+            return ret;
         }
 
-        private string UpperFirstChar(string str)
+        public static string UpperFirstChar(string str)
         {
             return char.ToUpper(str[0]) + str.Substring(1);
         }

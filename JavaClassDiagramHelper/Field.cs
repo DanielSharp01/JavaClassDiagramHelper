@@ -4,12 +4,13 @@ using System.Text;
 
 namespace JavaClassDiagramHelper
 {
-    public class Field
+    public class Field : Qualified
     {
-        public Annotation Annotation { get; set; }
         public TypeReference Type { get; set; }
-        public string Name { get; set; }
-        public List<Qualifier> Qualifiers { get; } = new List<Qualifier>();
+
+        public Field(List<Annotation> annotations, List<Qualifier> qualifiers)
+            : base(annotations, qualifiers)
+        { }
 
         public override string ToString()
         {
@@ -21,6 +22,14 @@ namespace JavaClassDiagramHelper
             ret += Type.ToString() + " " + Name;
 
             return ret;
+        }
+
+        public override string ToUMLString()
+        {
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.Append(Name.ToUMLString());
+            stringBuilder.Append(": " + Type.ToUMLString());
+            return WrapWithUmlQualifiers(stringBuilder.ToString());
         }
     }
 }
